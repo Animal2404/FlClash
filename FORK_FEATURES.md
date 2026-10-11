@@ -74,8 +74,10 @@ grep -rn "\"pin\"\|\"unpin\"\|\"pinNodes\"" arb
 
 ## 3. 功能三：仪表盘「置顶节点」卡片（可添加 / 移除）
 
-- 提交：`7ed3e2a8` `feat(dashboard): add a pinned nodes card`
-- 行为：仪表盘上的一张 **4 列 × 2 行**卡片，标题「置顶节点」；内容就是**代理页那套节点卡**（节点名 / 类型 / 延迟 ms / ⚡ 单独测速），并且**点卡片即置顶/取消**（角标常显）。所以「在仪表盘上选一个节点置顶、且能测速与看延迟」不需要再开代理页。
+- 提交：`7ed3e2a8` `feat(dashboard): add a pinned nodes card`（**卡片形态在 `v0.8.99-pin.3` 重做过，见下方「别改回去」**）
+- 行为：仪表盘上的一张 **4 列 × 2 行「显示型」卡片**，标题「置顶节点」。正文是**仪表盘自己的行卡片**（`RowCardPill`）：一行一个已置顶节点，左边节点名、右边延迟（未测过显示 `—`，测速中转圈），**点行 = 对该节点测速**。
+- 选节点 / 取消：点标题栏右侧的**滑杆图标**（28px，与「服务状态」卡的 ⟳ 同款做法）→ 打开「置顶节点」选择面板：**整行可点、右侧显示是否已置顶（选中态 + 实心/描边 pin）**，每行还有 ⚡ 单独测速；这是唯一改动置顶的地方，**不会**在仪表盘上随手切换。
+- 空态：插画 + 「📌 置顶节点」按钮（空状态必须有行动，符合 UX 规则）。
 - 添加 / 移除：和别的卡片完全一样——标题栏 **＋** 打开添加面板（面板遍历 `DashboardWidget.values`，新枚举值自动出现）→ 点卡片上的 **＋** 落地；**编辑（铅笔）**模式点卡片上的 **⊗** 移除。
 - **没有**加进 `defaultDashboardWidgets`（不影响老用户现有布局，需要的人自己添加）。
 
@@ -85,10 +87,13 @@ grep -rn "\"pin\"\|\"unpin\"\|\"pinNodes\"" arb
 | `lib/models/generated/config.g.dart` | `_$DashboardWidgetEnumMap` | **生成文件**，加枚举后重跑 build_runner |
 | `lib/views/dashboard/widget_registry.dart` | `DashboardWidget.pinnedNodes => GridItem(crossAxisCellCount: 4, child: PinnedNodesCard())` | 注册卡片与占位宽度 |
 | `lib/views/dashboard/widgets/widgets.dart` | `export 'pinned_nodes.dart';` | 导出新卡片 |
-| `lib/views/dashboard/widgets/pinned_nodes.dart` | `PinnedNodesCard` | `RowCardFrame` + `RowCardPane` + `InfoHeader`（复用功能二的 `pinNodes` 文案，**无需新增本地化键**）；正文是 `ListView`，逐行 `SizedBox(height: getItemHeight(ProxyCardType.min)) + ProxyCard(..., pinning: true)`；空态复用 `RowCardEmpty` + `NullStatusIllustration.proxies` |
-| `test/views/dashboard/pinned_nodes_test.dart` | — | 7 条聚焦测试：注册/可添加、空态、卡片与角标/测速按钮、延迟显示、测速点击、置顶并前置、再点取消 |
+| `lib/views/dashboard/widgets/pinned_nodes.dart` | `PinnedNodesCard`、`PinnedNodesSheet`、`showPinnedNodesSheet`、`pinnedNodesIn`、`currentGroupIn`、`_NodeDelay` | `RowCardFrame` + `RowCardPane` + `InfoHeader`（复用功能二的 `pinNodes` 文案，**无需新增本地化键**）；正文 `RowCardSlots` + `ListView`（`RowSnapScrollController` + `RowSnapScrollPhysics`）逐行 `RowCardPill`；选择面板是 `NestedPagedSheet` + `DecorationListItem(isSelected:)` 列表 |
+| `test/views/dashboard/pinned_nodes_test.dart` | — | 7 条聚焦测试：注册/可添加、置顶名解析与顺序、空态按钮、行显示与顺序、点行测速、面板里置顶/取消、面板里测速 |
 
-**关键设计（别改回去）**：正文**直接复用代理页的 `ProxyCard`**（而不是仪表盘自己的 `RowCardPill`），这样「和代理页一模一样」是结构性保证，代理页以后改样式这里自动跟随；`ListView` 顶部留了 `proxyGridSpacing` 的 padding，否则第一张卡片的置顶角标会被滚动视口裁掉。
+**关键设计（别改回去）**：这张卡**必须保持「仪表盘自己的行卡片」形态**。第一版把代理页的 `ProxyCard` 列表整个塞进卡里、置顶角标常显、点卡片即切换置顶——用户实测反馈「像把代理页缩小塞进仪表盘」「一直在置顶选择态、点了就反复横跳」（桌面与手机同样问题，截图见 `flclash-evidence/pinned-card-shots/` 为旧版、`pinned-card-shots-v2/` 为改后版）。结论：
+1. 卡片是**显示**用的（谁被置顶、多快），改动集中在明确的选择面板里；
+2. 卡片内**不要**复用代理页的 `ProxyCard`/角标，也不要让「点一下」同时表达两种意图；
+3. 空态按钮用 **pin 字形**，不要用 `AppGlyphs.add`——仪表盘「添加卡片」正是用 ＋，会撞图标（`add_widget_test.dart` 就是因此挂掉的）。
 
 ---
 
@@ -149,7 +154,8 @@ git push --force-with-lease origin feat/pinned-nodes
 | Windows 已知假阳性 | `test/lint/` 里 5 个用正斜杠比较路径的用例在 Windows 必挂（`design_package` / `dynamic_message_key` / `platform_layering` / `disposable_field` / `icon_button_tooltip`），**以 Linux CI 为准** |
 | 测试字体陷阱 | 测试用 Flutter 测试字体（字形≈方块、文本宽近 2 倍），窄卡片几何门禁比真机苛刻得多；改动卡片布局时先跑 `flutter test test/views/dashboard/` |
 | 角标要注意 | 代理页**没有** `DeferredPointerHandler`，角标别包 `DeferPointer`（会 assert）；改用整张卡片可点 + 角标显示状态。仪表盘添加面板里有 handler，那里才可以包 |
-| 卡片正文被裁 | 卡片内部的滚动列表要自己给顶部留出角标悬出空间（功能三的 `padding: EdgeInsets.only(top: proxyGridSpacing)`），否则第一行角标被视口裁掉 |
+| 卡片标题被截断 | 仪表盘卡片在手机上只有半屏宽（约 176px），`InfoHeader` 带 actions 时还会再扣 8px 垂直内边距。动作按钮用 **28px**（`SizedBox.square` + `IconButton(padding: zero)`，同「服务状态」卡的 ⟳），标题才放得下；否则像 "Outbound mo…" 一样省略号截断 |
+| 点错了别的卡片的图标 | 仪表盘里 `AppGlyphs.add` 属于「添加卡片」，卡片自己的动作别用同款字形（会撞 `add_widget_test`），用本卡片语义的字形（本例用 pin / sliders） |
 
 ---
 
