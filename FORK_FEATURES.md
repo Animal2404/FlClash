@@ -1,4 +1,4 @@
-# FlClash fork 改造说明：两项功能在哪里、上游更新后怎么快速跟上
+# FlClash fork 改造说明：三项功能在哪里、上游更新后怎么快速跟上
 
 > **给接手这个 fork 的任何人 / 任何 AI 会话：先读这一页，再动代码。**
 >
@@ -6,11 +6,11 @@
 > | --- | --- |
 > | 快照时间 | 2026-10-11 |
 > | 上游 | `chen08209/FlClash` main = `4b59eca8`（v0.8.99，2026-10-03 发布） |
-> | 本 fork | `Animal2404/FlClash` · 分支 `feat/pinned-nodes` = `b72429a3` |
+> | 本 fork | `Animal2404/FlClash` · 分支 `feat/pinned-nodes` = `7ed3e2a8`（三项功能累积） |
 > | 落后上游 | **0 个提交**（fork 基线就是上游 main 的最新提交） |
-> | 已发布 | `v0.8.99-refresh.1`（仅刷新按钮）、`v0.8.99-pin.1`（刷新 + 置顶，累积） |
+> | 已发布 | `v0.8.99-refresh.1`（刷新按钮）、`v0.8.99-pin.1`（+ 节点置顶）、`v0.8.99-pin.2`（+ 仪表盘置顶卡片） |
 
-**结论先说**：上游更新**不会**让这两项功能消失——fork 的分支 / 提交 / tag / Release 都是你自己仓库的对象，上游 push 碰不到它们（GitHub 的 "Sync fork → Update branch" 只会快进 `main`，不碰 feature 分支；千万别用 "Discard commits"）。需要动手只有一种情况：**想跟上上游新版本**，那就照 §3 变基（已实测：两个提交 cherry-pick 到上游 main 上零冲突）。
+**结论先说**：上游更新**不会**让这些功能消失——fork 的分支 / 提交 / tag / Release 都是你自己仓库的对象，上游 push 碰不到它们（GitHub 的 "Sync fork → Update branch" 只会快进 `main`，不碰 feature 分支；千万别用 "Discard commits"）。需要动手只有一种情况：**想跟上上游新版本**，那就照 §4 变基（已实测：三个提交 cherry-pick 到上游 main 上零冲突）。
 
 ---
 
@@ -20,18 +20,20 @@
 cd <repo>                                   # 本机路径：E:\DeepSeek\zmb\flclash-refresh
 git fetch upstream --tags                    # upstream = chen08209/FlClash（没配就先 git remote add upstream https://github.com/chen08209/FlClash.git）
 git log --oneline -1 upstream/main           # 上游现在到哪
-git log --oneline -3                         # 本地两个功能提交
-git diff main --stat                         # 相对上游的全部差异（本 fork = 上游 + 这些）
-git show --stat 50875d99                     # 功能一：仪表盘刷新按钮（3 个文件）
-git show --stat b72429a3                     # 功能二：节点置顶（20 个文件）
+git log --oneline -4                         # 本地三个功能提交（+ 一份文档提交）
+git diff main --stat                         # 相对上游的全部差异
+git show --stat 50875d99                     # 功能一：仪表盘刷新按钮
+git show --stat b72429a3                     # 功能二：代理页节点置顶
+git show --stat 7ed3e2a8                     # 功能三：仪表盘置顶节点卡片
 ```
 
-两个功能的**代码锚点**（换行号也不用怕，按名字 grep 就能定位）：
+各个功能的**代码锚点**（换行号也不用怕，按名字 grep 就能定位）：
 
 ```bash
 grep -n  "_ServiceRefreshButton"          lib/views/dashboard/widgets/service_status.dart
-grep -rn "pinnedProxies"                  lib arb test
+grep -rn "pinnedProxies"                  lib/views/proxies lib/views/dashboard
 grep -rn "togglePinnedProxy\|_ProxyPinMark" lib/views/proxies
+grep -rn "PinnedNodesCard\|DashboardWidget.pinnedNodes" lib
 grep -rn "\"pin\"\|\"unpin\"\|\"pinNodes\"" arb
 ```
 
@@ -40,7 +42,7 @@ grep -rn "\"pin\"\|\"unpin\"\|\"pinNodes\"" arb
 ## 1. 功能一：仪表盘「服务状态」卡片就地刷新按钮
 
 - 提交：`50875d99` `feat(dashboard): refresh the shown service from its card`
-- 位置：**代理/服务状态卡片**（仪表盘左列那张显示 Gemini/延迟 1789 ms 的卡）右侧数值列，延迟数字**上方**。
+- 位置：**服务状态卡片**（仪表盘左列那张显示 Gemini/延迟 1789 ms 的卡）右侧数值列，延迟数字**上方**。
 - 行为：点一下 = 对当前显示的节点/分组重新测速，**不打开二级窗口**；作用的是既有动作 `ServiceStatus.refresh([target])`（与二级窗口每行 ⟳ 完全相同）。
 
 | 文件 | 改了什么 |
@@ -48,7 +50,7 @@ grep -rn "\"pin\"\|\"unpin\"\|\"pinNodes\"" arb
 | `lib/views/dashboard/widgets/service_status.dart` | 新增 `_ServiceRefreshButton`（`IconButton` + `GlyphIcon(AppGlyphs.refresh)`，测速中换 `CommonCircleLoading` 并禁用）；`_ServiceAside` 增加 `refresh` 参数，把它放在延迟数值上方 |
 | `test/views/dashboard/service_status_test.dart` | 新增 3 条聚焦测试；把「窄/宽尺寸」几何测试补到**最短卡片高度 288×80** |
 
-**关键设计（别改回去）**：按钮放在 `_ServiceAside` 的纵向列里，**不占卡片横向宽度**。第一版做成横向尾部按钮时，仓库自带的窄卡片几何门禁（`test/views/dashboard/service_status_test.dart` 里 `fits one row at narrow and wide sizes in every locale`）真实报出 `RenderFlex overflowed`——标题行只剩 17.5px。
+**关键设计（别改回去）**：按钮放在 `_ServiceAside` 的纵向列里，**不占卡片横向宽度**。第一版做成横向尾部按钮时，仓库自带的窄卡片几何门禁真实报出 `RenderFlex overflowed`——标题行只剩 17.5px。
 
 ---
 
@@ -59,7 +61,7 @@ grep -rn "\"pin\"\|\"unpin\"\|\"pinNodes\"" arb
 
 | 文件 | 关键符号 | 说明 |
 | --- | --- | --- |
-| `lib/models/config.dart` | `@Default([]) List<String> pinnedProxies` | 持久化字段（在 `AppSettingProps` 的 `serviceOrder`/`disabledServices` 旁边） |
+| `lib/models/config.dart` | `@Default([]) List<String> pinnedProxies` | 持久化字段（在 `serviceOrder`/`disabledServices` 旁边） |
 | `lib/models/generated/config.freezed.dart`、`config.g.dart` | — | **生成文件**，改模型后重跑 build_runner |
 | `lib/providers/state/proxies.dart` | `_pinnedFirst(...)`、`filterGroupsState` | 置顶排序的**唯一出口**（tab/list 两种布局共用；`proxyGroupSelectorState` 与仪表盘分组卡不受影响） |
 | `lib/views/proxies/proxies.dart` | `_isPinning`、`_handleTogglePinning`、`actions: [FadeRotationScaleBox(IconButton(...))]` | 标题栏按钮。**用 `actions:`（widget）而不是 `iconActions:`（数据）**，否则会被 app bar 的折叠逻辑塞进 ⋮ 菜单 |
@@ -70,17 +72,37 @@ grep -rn "\"pin\"\|\"unpin\"\|\"pinNodes\"" arb
 
 ---
 
-## 3. 上游更新后，把两项功能快速搬过去（推荐 rebase）
+## 3. 功能三：仪表盘「置顶节点」卡片（可添加 / 移除）
+
+- 提交：`7ed3e2a8` `feat(dashboard): add a pinned nodes card`
+- 行为：仪表盘上的一张 **4 列 × 2 行**卡片，标题「置顶节点」；内容就是**代理页那套节点卡**（节点名 / 类型 / 延迟 ms / ⚡ 单独测速），并且**点卡片即置顶/取消**（角标常显）。所以「在仪表盘上选一个节点置顶、且能测速与看延迟」不需要再开代理页。
+- 添加 / 移除：和别的卡片完全一样——标题栏 **＋** 打开添加面板（面板遍历 `DashboardWidget.values`，新枚举值自动出现）→ 点卡片上的 **＋** 落地；**编辑（铅笔）**模式点卡片上的 **⊗** 移除。
+- **没有**加进 `defaultDashboardWidgets`（不影响老用户现有布局，需要的人自己添加）。
+
+| 文件 | 关键符号 | 说明 |
+| --- | --- | --- |
+| `lib/enum/enum.dart` | `DashboardWidget.pinnedNodes` | 新枚举值（`platforms` 默认全平台） |
+| `lib/models/generated/config.g.dart` | `_$DashboardWidgetEnumMap` | **生成文件**，加枚举后重跑 build_runner |
+| `lib/views/dashboard/widget_registry.dart` | `DashboardWidget.pinnedNodes => GridItem(crossAxisCellCount: 4, child: PinnedNodesCard())` | 注册卡片与占位宽度 |
+| `lib/views/dashboard/widgets/widgets.dart` | `export 'pinned_nodes.dart';` | 导出新卡片 |
+| `lib/views/dashboard/widgets/pinned_nodes.dart` | `PinnedNodesCard` | `RowCardFrame` + `RowCardPane` + `InfoHeader`（复用功能二的 `pinNodes` 文案，**无需新增本地化键**）；正文是 `ListView`，逐行 `SizedBox(height: getItemHeight(ProxyCardType.min)) + ProxyCard(..., pinning: true)`；空态复用 `RowCardEmpty` + `NullStatusIllustration.proxies` |
+| `test/views/dashboard/pinned_nodes_test.dart` | — | 7 条聚焦测试：注册/可添加、空态、卡片与角标/测速按钮、延迟显示、测速点击、置顶并前置、再点取消 |
+
+**关键设计（别改回去）**：正文**直接复用代理页的 `ProxyCard`**（而不是仪表盘自己的 `RowCardPill`），这样「和代理页一模一样」是结构性保证，代理页以后改样式这里自动跟随；`ListView` 顶部留了 `proxyGridSpacing` 的 padding，否则第一张卡片的置顶角标会被滚动视口裁掉。
+
+---
+
+## 4. 上游更新后，把三项功能快速搬过去（推荐 rebase）
 
 ```bash
 git fetch upstream --tags
 git log --oneline main..upstream/main                 # 上游新增了什么
 git log -1 --format='%H %ad %s' upstream/main
 
-# ① 先看上游有没有动到我们的热点文件（没有的话变基基本是自动的）
-git diff --name-only main upstream/main | grep -E 'views/proxies|dashboard/widgets/service_status|models/config|arb/|l10n/'
+# ① 先看上游有没有动到我们的热点文件
+git diff --name-only main upstream/main | grep -E 'views/proxies|dashboard/widgets/service_status|dashboard/widgets/pinned_nodes|widget_registry|enum/enum|models/config|arb/|l10n/'
 
-# ② 变基（把两个提交重新落到上游最新之上）
+# ② 变基（把三个提交重新落到上游最新之上）
 git switch feat/pinned-nodes
 git rebase upstream/main
 
@@ -96,39 +118,42 @@ flutter test test/views/ test/l10n/ test/lint/
 git push --force-with-lease origin feat/pinned-nodes
 ```
 
-**实测结论（2026-10-11）**：`git cherry-pick 50875d99 b72429a3` 到上游 `main` 之上**零冲突**，结果树与 `feat/pinned-nodes` 完全一致，且 `flutter analyze` 无问题——说明这两个提交是自洽的（生成文件也在提交里），**单独 cherry-pick 到任意新基线上都够用**。
+**实测结论（2026-10-11）**：`git cherry-pick 50875d99 b72429a3` 到上游 `main` 之上**零冲突**，结果树与 `feat/pinned-nodes` 完全一致，且 `flutter analyze` 无问题——说明这些提交是自洽的（生成文件也在提交里）。
 
 **冲突热点（按概率排序）与处理**：
 
 | 冲突文件 | 处理办法 |
 | --- | --- |
 | `lib/**/generated/*.dart`、`lib/l10n/**`、`lib/l10n/intl/**` | **别手工合并**：`git checkout --ours`/`--theirs` 随便留一个，解决源文件后重跑 build_runner + intl 生成，生成结果自然正确 |
+| `lib/enum/enum.dart` | 枚举里保留上游新增项，把 `pinnedNodes,` 放回 `profiles` 前一行 |
+| `lib/views/dashboard/widget_registry.dart` | 保留上游分支，把 `DashboardWidget.pinnedNodes => ...` 那一段贴回 |
 | `arb/*.arb` | 保留上游改动，重新加回四语言的 `pin` / `unpin` / `pinNodes` |
-| `lib/views/proxies/card.dart`、`proxies.dart`、`tab.dart`、`list.dart` | 上游改动 + 我方以 `pinnedProxies` / `pinning` / `_ProxyPinMark` / `_ServiceRefreshButton` 为锚点重新贴回，通常几行 |
-| `lib/models/config.dart` | 只在 `AppSettingProps` 里加一行 `@Default([]) List<String> pinnedProxies,` |
+| `lib/views/proxies/card.dart`、`proxies.dart`、`tab.dart`、`list.dart` | 上游改动 + 我方以 `pinnedProxies` / `pinning` / `_ProxyPinMark` 为锚点重新贴回，通常几行 |
+| `lib/models/config.dart` | 只在 `AppSettingProps` 里加一行 `@Default([]) List<String> pinnedProxies,`，`defaultDashboardWidgets` 不要动 |
 | `lib/providers/state/proxies.dart` | `filterGroupsState` 里保留上游逻辑 + 包一层 `_pinnedFirst(...)` |
-| `.github/workflows/fork-windows.yaml` | 新文件，不会冲突（上游没有同名文件） |
+| `lib/views/dashboard/widgets/pinned_nodes.dart`、`test/**`、`.github/workflows/fork-windows.yaml` | 新文件，不会冲突（上游没有同名文件） |
 
 **备选方案**：不想改写历史就 `git merge upstream/main`（不用强推），代价是每次多一个 merge 提交。
 
 ---
 
-## 4. 本地校验（踩过的坑都在这）
+## 5. 本地校验（踩过的坑都在这）
 
 | 项 | 要求 |
 | --- | --- |
 | Flutter | **必须是 3.47.4**（CI 固定值）。本机 3.44.9 会因 `freezed 4.x` 要求 Dart ≥3.13 直接解析失败；本项目实测用 `E:\flutter-3474\flutter\bin\flutter.bat` |
-| 变更模型/提供者 | 必须重跑 `dart run build_runner build --delete-conflicting-outputs` |
+| 变更模型/提供者/枚举 | 必须重跑 `dart run build_runner build --delete-conflicting-outputs` |
 | 改文案 | 必须改 `arb/` 四个文件再 `dart run intl_utils:generate`；生成后**补跑 `dart format lib`**（生成器输出不是格式化结果） |
 | 本地跑测试 | `flutter test` 会触发 Go/Rust 构建钩子。子模块 `core/Clash.Meta` 没克隆齐时，临时把 `pubspec.yaml` 的 `hooks.user_defines.setup.build_assets` 置 `false`（**绝不提交**），CI 的 checks job 也是这么干的 |
 | `flutter test` 卡住不动 | `.dart_tool` 里残留了钩子失败留下的锁（`setup_build_cache/*.lock`、`hooks_runner/**/.lock`），进程会空转等锁而不是编译。停掉进程后 `find .dart_tool -name '*.lock' -type f -delete` 再跑（`fork-sync.sh` 已内置）。清锁后实测 31 秒跑完 |
 | Windows 已知假阳性 | `test/lint/` 里 5 个用正斜杠比较路径的用例在 Windows 必挂（`design_package` / `dynamic_message_key` / `platform_layering` / `disposable_field` / `icon_button_tooltip`），**以 Linux CI 为准** |
-| 测试字体陷阱 | 测试用 Flutter 测试字体（字形≈方块、文本宽近 2 倍），窄卡片几何门禁比真机苛刻得多；改动卡片布局时先跑 `flutter test test/views/dashboard/service_status_test.dart` |
-| 角标要注意 | 代理页**没有** `DeferredPointerHandler`，角标别包 `DeferPointer`（会 assert）；改用整张卡片可点 + 角标显示状态 |
+| 测试字体陷阱 | 测试用 Flutter 测试字体（字形≈方块、文本宽近 2 倍），窄卡片几何门禁比真机苛刻得多；改动卡片布局时先跑 `flutter test test/views/dashboard/` |
+| 角标要注意 | 代理页**没有** `DeferredPointerHandler`，角标别包 `DeferPointer`（会 assert）；改用整张卡片可点 + 角标显示状态。仪表盘添加面板里有 handler，那里才可以包 |
+| 卡片正文被裁 | 卡片内部的滚动列表要自己给顶部留出角标悬出空间（功能三的 `padding: EdgeInsets.only(top: proxyGridSpacing)`），否则第一行角标被视口裁掉 |
 
 ---
 
-## 5. 云端编译与发布
+## 6. 云端编译与发布
 
 - 工作流：`.github/workflows/fork-windows.yaml`（fork 专属，**新文件不会与上游冲突**）
   - 触发：推送到 `feat/**` 分支 / `v*-refresh*` tag / 手动
@@ -151,23 +176,23 @@ gh release create v0.8.99-<后缀>.N -R Animal2404/FlClash \
 
 ---
 
-## 6. 给下一个会话的最短路径（可直接粘的 prompt）
+## 7. 给下一个会话的最短路径（可直接粘的 prompt）
 
-> 这个仓库是 FlClash 的个人 fork，相对上游只加了两项功能（仪表盘刷新按钮、代理界面节点置顶）。
-> 先读仓库根目录的 `FORK_FEATURES.md`，再按 §0 的三条命令确认落点；
-> 要跟上上游就按 §3 变基（生成文件不要手工合并，重跑 build_runner + intl_utils）；
-> 要出包就推 `feat/**` 分支走 GitHub Actions，然后按 §5 发 Release。
+> 这个仓库是 FlClash 的个人 fork，相对上游只加了三项功能（仪表盘刷新按钮、代理页节点置顶、仪表盘置顶节点卡片）。
+> 先读仓库根目录的 `FORK_FEATURES.md`，再按 §0 的四条命令确认落点；
+> 要跟上上游就按 §4 变基（生成文件不要手工合并，重跑 build_runner + intl_utils）；
+> 要出包就推 `feat/**` 分支走 GitHub Actions，然后按 §6 发 Release。
 
 自动化脚本：仓库根目录 `fork-sync.sh`（拉上游 → 变基 → 重新生成 → 格式/静态检查/测试，见脚本头部注释）。
 
 ---
 
-## 7. 现状、分支与证据
+## 8. 现状、分支与证据
 
 | 项 | 位置 |
 | --- | --- |
-| fork 分支 | `feat/dashboard-quick-refresh`（功能一）、`feat/pinned-nodes`（功能二，**含功能一**，发布用这条） |
-| Release | https://github.com/Animal2404/FlClash/releases （`v0.8.99-refresh.1`、`v0.8.99-pin.1`） |
-| 代码差异补丁 | 会话工作区 `flclash-evidence/pin-patch.patch`（相对上游 main 的完整 diff） |
-| 渲染证据 | `flclash-evidence/pin-shots/*.png`（代理页普通/置顶/浅色）、`card_*.png`（服务卡深浅色） |
+| fork 分支 | `feat/dashboard-quick-refresh`（功能一）、`feat/pinned-nodes`（功能一+二+三，**发布用这条**） |
+| Release | https://github.com/Animal2404/FlClash/releases （`v0.8.99-refresh.1`、`v0.8.99-pin.1`、`v0.8.99-pin.2`） |
+| 代码差异补丁 | 会话工作区 `flclash-evidence/pin-patch.patch`（相对上游 main 的完整 diff，随功能追加重新生成） |
+| 渲染证据 | `flclash-evidence/pin-shots/*.png`（代理页普通/置顶/浅色）、`pinned-card-shots/*.png`（新卡片深/浅/空/加高）、`card_*.png`（服务卡） |
 | 上游同步 | `git remote add upstream https://github.com/chen08209/FlClash.git`（本机**已配好**） |
