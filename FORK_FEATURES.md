@@ -6,9 +6,9 @@
 > | --- | --- |
 > | 快照时间 | 2026-10-11 |
 > | 上游 | `chen08209/FlClash` main = `4b59eca8`（v0.8.99，2026-10-03 发布） |
-> | 本 fork | `Animal2404/FlClash` · 分支 `feat/pinned-nodes` = `7ed3e2a8`（三项功能累积） |
+> | 本 fork | `Animal2404/FlClash` · 分支 `feat/pinned-nodes`（三项功能累积，最新提交见 `git log --oneline -1`） |
 > | 落后上游 | **0 个提交**（fork 基线就是上游 main 的最新提交） |
-> | 已发布 | `v0.8.99-refresh.1`（刷新按钮）、`v0.8.99-pin.1`（+ 节点置顶）、`v0.8.99-pin.2`（+ 仪表盘置顶卡片） |
+> | 已发布 | `v0.8.99-refresh.1`（刷新按钮）、`v0.8.99-pin.1`（+ 节点置顶）、`v0.8.99-pin.2`（+ 仪表盘置顶卡片；**同一 Release 挂 Windows 安装包/免安装包 + Android 三个 ABI 的 APK**） |
 
 **结论先说**：上游更新**不会**让这些功能消失——fork 的分支 / 提交 / tag / Release 都是你自己仓库的对象，上游 push 碰不到它们（GitHub 的 "Sync fork → Update branch" 只会快进 `main`，不碰 feature 分支；千万别用 "Discard commits"）。需要动手只有一种情况：**想跟上上游新版本**，那就照 §4 变基（已实测：三个提交 cherry-pick 到上游 main 上零冲突）。
 
@@ -131,7 +131,7 @@ git push --force-with-lease origin feat/pinned-nodes
 | `lib/views/proxies/card.dart`、`proxies.dart`、`tab.dart`、`list.dart` | 上游改动 + 我方以 `pinnedProxies` / `pinning` / `_ProxyPinMark` 为锚点重新贴回，通常几行 |
 | `lib/models/config.dart` | 只在 `AppSettingProps` 里加一行 `@Default([]) List<String> pinnedProxies,`，`defaultDashboardWidgets` 不要动 |
 | `lib/providers/state/proxies.dart` | `filterGroupsState` 里保留上游逻辑 + 包一层 `_pinnedFirst(...)` |
-| `lib/views/dashboard/widgets/pinned_nodes.dart`、`test/**`、`.github/workflows/fork-windows.yaml` | 新文件，不会冲突（上游没有同名文件） |
+| `lib/views/dashboard/widgets/pinned_nodes.dart`、`test/**`、`.github/workflows/fork-packages.yaml` | 新文件，不会冲突（上游没有同名文件） |
 
 **备选方案**：不想改写历史就 `git merge upstream/main`（不用强推），代价是每次多一个 merge 提交。
 
@@ -155,21 +155,27 @@ git push --force-with-lease origin feat/pinned-nodes
 
 ## 6. 云端编译与发布
 
-- 工作流：`.github/workflows/fork-windows.yaml`（fork 专属，**新文件不会与上游冲突**）
+- 工作流：`.github/workflows/fork-packages.yaml`（fork 专属，**新文件不会与上游冲突**；2026-10-11 由 `fork-windows.yaml` 改名，因为现在桌面与手机都出包）
   - 触发：推送到 `feat/**` 分支 / `v*-refresh*` tag / 手动
   - job 1 `Dart checks`（ubuntu）：pub get → `dart format --set-exit-if-changed lib test` → `flutter analyze --no-fatal-infos` →（跳过 Go 钩子）→ `flutter test test/views/ test/l10n/ test/lint/`
-  - job 2 `Windows packages`（windows-2022 + Flutter 3.47.4）：`dart setup.dart windows --env stable -v` → 上传 `dist/`（`FlClash-0.8.99-windows-amd64-setup.exe` + `.zip`）+ 启动冒烟截图
+  - job 2 `Android packages`（ubuntu-latest + Flutter 3.47.4 + **NDK r28c**）：`ANDROID_NDK_HOME=<ndk> dart setup.dart android --env stable -v` → 上传 `dist/`（`FlClash-0.8.99-android-arm64-v8a.apk` / `-armeabi-v7a.apk` / `-x86_64.apk`，`setup.dart` 内部走 `flutter build apk --split-per-abi`）
+    - **没有签名密钥时**（fork 就是这种情况）`android/app/build.gradle.kts` 自动退回 **debug 签名 + `applicationIdSuffix = ".dev"`** → 包名 `com.follow.clash.dev`，可与官方版共存，装完即测
+    - Android 侧不需要 Windows 那套 `services/helper` rust，Go 核心由钩子用 NDK 交叉编译
+  - job 3 `Windows packages`（windows-2022 + Flutter 3.47.4）：`dart setup.dart windows --env stable -v` → 上传 `dist/`（`FlClash-0.8.99-windows-amd64-setup.exe` + `.zip`）+ 启动冒烟截图
 - 上游自带 `build.yaml` 也会在 fork 上跑（全量测试 + 覆盖率门槛 + 三平台编译），**它全绿才算真稳**。
-- 发 Release（`--target` 必须给**分支名**，给 SHA 会 422）：
+- 发 Release（`--target` 必须给**分支名**，给 SHA 会 422）；**Windows 与 Android 挂在同一个 Release** 上：
 
 ```bash
-gh run download <run-id> -R Animal2404/FlClash -D dist
+gh run download <run-id> -R Animal2404/FlClash -D dist        # 分别下 windows / android 两个 artifact
 gh release create v0.8.99-<后缀>.N -R Animal2404/FlClash \
   --target feat/pinned-nodes \
   --title "FlClash v0.8.99 + <本次内容>（个人 fork 构建）" \
   --notes-file notes.md \
   dist/flclash-windows-refresh/FlClash-0.8.99-windows-amd64-setup.exe \
-  dist/flclash-windows-refresh/FlClash-0.8.99-windows-amd64.zip
+  dist/flclash-windows-refresh/FlClash-0.8.99-windows-amd64.zip \
+  dist/flclash-android/*.apk
+# 已经发过的 Release 想补资产：
+gh release upload v0.8.99-<后缀>.N -R Animal2404/FlClash dist/flclash-android/*.apk
 ```
 
 - 发布后自查：`curl -sSIL <资产直链>` 应 `302 → 200` 且 `Content-Length` 与本地文件一致；Release 页 `200`。
@@ -192,7 +198,7 @@ gh release create v0.8.99-<后缀>.N -R Animal2404/FlClash \
 | 项 | 位置 |
 | --- | --- |
 | fork 分支 | `feat/dashboard-quick-refresh`（功能一）、`feat/pinned-nodes`（功能一+二+三，**发布用这条**） |
-| Release | https://github.com/Animal2404/FlClash/releases （`v0.8.99-refresh.1`、`v0.8.99-pin.1`、`v0.8.99-pin.2`） |
+| Release | https://github.com/Animal2404/FlClash/releases （`v0.8.99-refresh.1`、`v0.8.99-pin.1`、`v0.8.99-pin.2` = Windows 安装包/免安装包 + **Android `arm64-v8a` / `armeabi-v7a` / `x86_64` 三个 APK**，桌面与手机来自同一提交） |
 | 代码差异补丁 | 会话工作区 `flclash-evidence/pin-patch.patch`（相对上游 main 的完整 diff，随功能追加重新生成） |
 | 渲染证据 | `flclash-evidence/pin-shots/*.png`（代理页普通/置顶/浅色）、`pinned-card-shots/*.png`（新卡片深/浅/空/加高）、`card_*.png`（服务卡） |
 | 上游同步 | `git remote add upstream https://github.com/chen08209/FlClash.git`（本机**已配好**） |
