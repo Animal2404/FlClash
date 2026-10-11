@@ -1,8 +1,10 @@
-name: refresh-button
+name: fork packages
 
-# Fork-only pipeline for the dashboard refresh button branch: it runs the
-# checks the change has to pass and builds the Windows packages the fork's
-# release is cut from. Upstream's own build.yaml still runs beside it.
+# Fork-only pipeline: it runs the checks the changes have to pass and builds
+# the packages the fork's releases are cut from (Windows installer + portable
+# archive, Android APKs per ABI). Upstream's own build.yaml still runs beside
+# it. Without release signing secrets the Android release build falls back to
+# the debug keystore and the ".dev" application id, as upstream intends.
 on:
   push:
     branches:
@@ -18,6 +20,7 @@ concurrency:
 env:
   FLUTTER_VERSION: '3.47.4'
   GO_VERSION: '1.26.4'
+  NDK_VERSION: r28c
 
 jobs:
   checks:
@@ -57,6 +60,75 @@ jobs:
 
       - name: Run the view, localization and lint suites
         run: flutter test test/views/ test/l10n/ test/lint/
+
+  android:
+    name: Android packages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: core/go.sum
+
+      - name: Enable the Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: android
+          workspaces: services/helper
+          cache-directories: .dart_tool/hooks_runner
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Setup NDK
+        uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: ${{ env.NDK_VERSION }}
+          add-to-path: true
+          link-to-sdk: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build the APKs
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: dart setup.dart android --env stable -v
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: flclash-android
+          path: ./dist
+          overwrite: true
+
+      - name: Upload the build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flclash-android-log
+          path: |
+            .dart_tool/setup_build_cache/hook.log
+          if-no-files-found: ignore
+          overwrite: true
 
   windows:
     name: Windows packages
