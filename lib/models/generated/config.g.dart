@@ -142,6 +142,7 @@ const _$DashboardWidgetEnumMap = {
   DashboardWidget.overrideNtpButton: 'overrideNtpButton',
   DashboardWidget.runTime: 'runTime',
   DashboardWidget.proxyGroups: 'proxyGroups',
+  DashboardWidget.pinnedNodes: 'pinnedNodes',
   DashboardWidget.profiles: 'profiles',
 };
 
