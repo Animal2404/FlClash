@@ -185,6 +185,101 @@ void main() {
     expect(find.text('45 ms'), findsOneWidget);
   });
 
+  testWidgets('the tile re-checks the shown service from its own button', (
+    tester,
+  ) async {
+    final asked = <String>[];
+    answer((params) {
+      asked.addAll(params.names);
+      return [
+        for (final name in params.names)
+          _item(name, ServiceProbeStatus.available, delay: 30),
+      ];
+    });
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+    expect(asked, ['google']);
+
+    await tester.tap(find.byTooltip('Check'));
+    await tester.pumpAndSettle();
+
+    expect(asked, ['google', 'google']);
+    expect(find.byType(ServiceStatusSheet), findsNothing);
+    expect(find.text('30 ms'), findsOneWidget);
+  });
+
+  testWidgets('the tile button holds the tap until its check finishes', (
+    tester,
+  ) async {
+    final completion = Completer<List<ServiceCheckItem>>();
+    var calls = 0;
+    answer((params) {
+      calls++;
+      if (calls > 1) return completion.future;
+      return [
+        for (final name in params.names)
+          _item(name, ServiceProbeStatus.available, delay: 30),
+      ];
+    });
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+    final cardSize = tester.getSize(find.byType(ServiceStatusCard));
+
+    await tester.tap(find.byTooltip('Check'));
+    await tester.pump();
+
+    final spinner = find.descendant(
+      of: find.byType(ServiceStatusCard),
+      matching: find.byType(CommonCircleLoading),
+    );
+    expect(spinner, findsOneWidget);
+    expect(
+      tester
+          .widget<IconButton>(
+            find.ancestor(of: spinner, matching: find.byType(IconButton)),
+          )
+          .onPressed,
+      isNull,
+    );
+    expect(tester.getSize(find.byType(ServiceStatusCard)), cardSize);
+
+    completion.complete([
+      _item('google', ServiceProbeStatus.available, delay: 55),
+    ]);
+    await tester.pumpAndSettle();
+    expect(find.text('55 ms'), findsOneWidget);
+    expect(find.byType(CommonCircleLoading), findsNothing);
+  });
+
+  testWidgets('a check that throws leaves the tile button usable', (
+    tester,
+  ) async {
+    var calls = 0;
+    when(() => core.serviceCheck(any())).thenAnswer((_) async {
+      calls++;
+      if (calls > 1) throw Exception('probe failed');
+      return [_item('google', ServiceProbeStatus.available, delay: 30)];
+    });
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Check'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CommonCircleLoading), findsNothing);
+    expect(
+      tester
+          .widget<IconButton>(
+            find.ancestor(
+              of: find.byTooltip('Check'),
+              matching: find.byType(IconButton),
+            ),
+          )
+          .onPressed,
+      isNotNull,
+    );
+  });
+
   testWidgets('the tile shows the flag and the address the node leaves from', (
     tester,
   ) async {
@@ -1313,7 +1408,11 @@ void main() {
       const Locale('ja'),
       const Locale('ru'),
     ]) {
-      for (final size in [const Size(288, 84), const Size(552, 120)]) {
+      for (final size in [
+        const Size(288, 80),
+        const Size(288, 84),
+        const Size(552, 120),
+      ]) {
         await tester.pumpWidget(
           app(
             outboundIp: (_) => _address('203.0.113.7', 'US'),

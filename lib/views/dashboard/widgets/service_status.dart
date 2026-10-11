@@ -325,10 +325,46 @@ class _ServiceStatusCardState extends ConsumerState<ServiceStatusCard>
                 controller: _controller,
                 count: targets.length,
                 index: index,
+                refresh: _ServiceRefreshButton(
+                  loading: entry.isLoading,
+                  onPressed: () => _services.refresh([target]),
+                ),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+const _refreshButtonSize = 28.0;
+
+/// Re-checks the shown service in place, where the sheet's own rows do it.
+class _ServiceRefreshButton extends StatelessWidget {
+  const _ServiceRefreshButton({required this.loading, required this.onPressed});
+
+  final bool loading;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox.square(
+      dimension: _refreshButtonSize,
+      child: IconButton(
+        tooltip: context.appLocalizations.serviceCheck,
+        padding: EdgeInsets.zero,
+        onPressed: loading ? null : onPressed,
+        icon: loading
+            ? const SizedBox.square(
+                dimension: commonCardIconSize,
+                child: CommonCircleLoading(),
+              )
+            : GlyphIcon(
+                AppGlyphs.refresh,
+                size: commonCardIconSize,
+                color: context.colorScheme.onSurfaceVariant,
+              ),
       ),
     );
   }
@@ -563,6 +599,7 @@ class _ServiceAside extends StatelessWidget {
     required this.controller,
     required this.count,
     required this.index,
+    required this.refresh,
   });
 
   final bool loading;
@@ -570,6 +607,7 @@ class _ServiceAside extends StatelessWidget {
   final PageController controller;
   final int count;
   final int index;
+  final Widget refresh;
 
   /// The pager beside this column must keep its width: a resize mid-swipe
   /// cancels the page animation and lets it settle on the wrong service.
@@ -607,6 +645,7 @@ class _ServiceAside extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.end,
         spacing: 8,
         children: [
+          refresh,
           if (loading)
             SkeletonText(width: 36, style: numeric)
           else if (delay != null)

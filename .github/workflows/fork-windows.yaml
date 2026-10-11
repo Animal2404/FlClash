@@ -1,0 +1,162 @@
+name: refresh-button
+
+# Fork-only pipeline for the dashboard refresh button branch: it runs the
+# checks the change has to pass and builds the Windows packages the fork's
+# release is cut from. Upstream's own build.yaml still runs beside it.
+on:
+  push:
+    branches:
+      - 'feat/**'
+    tags:
+      - 'v*-refresh*'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.47.4'
+  GO_VERSION: '1.26.4'
+
+jobs:
+  checks:
+    name: Dart checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Enable the Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: plugins/rust_api/rust
+          cache-directories: .dart_tool/hooks_runner
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Check format
+        run: dart format --output=none --set-exit-if-changed lib test
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      # No test loads the Go core; upstream turns the same hook off for its tests.
+      - name: Skip the Go core build hook
+        run: yq -i '.hooks.user_defines.setup.build_assets = false' pubspec.yaml
+
+      - name: Run the dashboard and lint suites
+        run: flutter test test/views/dashboard/ test/lint/
+
+  windows:
+    name: Windows packages
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Enable git long paths
+        run: git config --global core.longpaths true
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: core/go.sum
+
+      - name: Enable the Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: windows
+          workspaces: services/helper
+          cache-directories: .dart_tool/hooks_runner
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Ensure Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (Test-Path $iscc) {
+            "already installed: $iscc"
+          } else {
+            choco install innosetup -y --no-progress
+          }
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build the installer and the portable archive
+        run: dart setup.dart windows --env stable -v
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: flclash-windows-refresh
+          path: ./dist
+          overwrite: true
+
+      - name: Upload the build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flclash-windows-log
+          path: |
+            .dart_tool/setup_build_cache/hook.log
+          if-no-files-found: ignore
+          overwrite: true
+
+      # Launch the portable build on this throwaway runner, capture the
+      # desktop it draws, and end only the process this step started.
+      - name: Smoke the portable build
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem dist\*.zip | Select-Object -First 1
+          if (-not $zip) { throw 'no portable archive in dist' }
+          Expand-Archive -Path $zip.FullName -DestinationPath smoke -Force
+          $exe = Get-ChildItem smoke -Recurse -Filter FlClash.exe | Select-Object -First 1
+          if (-not $exe) { throw 'no FlClash.exe in the portable archive' }
+          New-Item -ItemType Directory -Force -Path shots | Out-Null
+          $process = Start-Process -FilePath $exe.FullName -PassThru
+          Start-Sleep -Seconds 40
+          "exe=$($exe.FullName)"
+          "pid=$($process.Id) alive=$(-not $process.HasExited)"
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen
+          "screen=$($bounds.Width)x$($bounds.Height)"
+          $bitmap = New-Object System.Drawing.Bitmap($bounds.Width, $bounds.Height)
+          $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+          $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+          $bitmap.Save("$PWD\shots\desktop.png")
+          $graphics.Dispose()
+          $bitmap.Dispose()
+          if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+          "captured $PWD\shots\desktop.png"
+
+      - name: Upload the desktop capture
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flclash-windows-shot
+          path: shots
+          if-no-files-found: ignore
+          overwrite: true
