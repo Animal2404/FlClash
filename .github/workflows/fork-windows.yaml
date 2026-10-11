@@ -55,8 +55,8 @@ jobs:
       - name: Skip the Go core build hook
         run: yq -i '.hooks.user_defines.setup.build_assets = false' pubspec.yaml
 
-      - name: Run the dashboard and lint suites
-        run: flutter test test/views/dashboard/ test/lint/
+      - name: Run the view, localization and lint suites
+        run: flutter test test/views/ test/l10n/ test/lint/
 
   windows:
     name: Windows packages

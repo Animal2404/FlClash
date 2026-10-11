@@ -108,25 +108,57 @@ GroupsState visibleGroupsState(Ref ref) {
 @riverpod
 GroupsState filterGroupsState(Ref ref, String query) {
   final currentGroups = ref.watch(visibleGroupsStateProvider);
+  final pinnedProxies = ref.watch(
+    appSettingProvider.select((state) => state.pinnedProxies),
+  );
   final searchQuery = SearchQuery(query);
   if (searchQuery.isEmpty) {
-    return currentGroups;
+    return currentGroups.copyWith(
+      value: [
+        for (final group in currentGroups.value)
+          group.copyWith(all: _pinnedFirst(group.all, pinnedProxies)),
+      ],
+    );
   }
   final matches = <Proxy, bool>{};
   final groups = currentGroups.value
       .map((group) {
         return group.copyWith(
-          all: group.all
-              .where(
-                (proxy) =>
-                    matches[proxy] ??= searchQuery.matches(proxy.searchFields),
-              )
-              .toList(),
+          all: _pinnedFirst(
+            group.all
+                .where(
+                  (proxy) => matches[proxy] ??= searchQuery.matches(
+                    proxy.searchFields,
+                  ),
+                )
+                .toList(),
+            pinnedProxies,
+          ),
         );
       })
       .where((group) => group.all.isNotEmpty)
       .toList();
   return currentGroups.copyWith(value: groups);
+}
+
+/// The nodes a user pinned come first, in the order they were pinned. A name
+/// the group does not hold is skipped rather than inserted.
+List<Proxy> _pinnedFirst(List<Proxy> proxies, List<String> pinnedProxies) {
+  if (pinnedProxies.isEmpty) {
+    return proxies;
+  }
+  final pinned = <Proxy>[
+    for (final name in pinnedProxies)
+      ...proxies.where((proxy) => proxy.name == name),
+  ];
+  if (pinned.isEmpty) {
+    return proxies;
+  }
+  return [
+    ...pinned,
+    for (final proxy in proxies)
+      if (!pinnedProxies.contains(proxy.name)) proxy,
+  ];
 }
 
 @riverpod

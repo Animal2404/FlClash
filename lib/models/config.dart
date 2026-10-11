@@ -158,6 +158,7 @@ abstract class AppSettingProps with _$AppSettingProps {
     @Default(EditorFontSize.standard) EditorFontSize editorFontSize,
     @Default([]) List<String> serviceOrder,
     @Default([]) List<String> disabledServices,
+    @Default([]) List<String> pinnedProxies,
     String? currentService,
   }) = _AppSettingProps;
 

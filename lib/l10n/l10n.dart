@@ -580,6 +580,21 @@ class AppLocalizations {
     return Intl.message('Save', name: 'save', desc: '', args: []);
   }
 
+  /// `Pin`
+  String get pin {
+    return Intl.message('Pin', name: 'pin', desc: '', args: []);
+  }
+
+  /// `Unpin`
+  String get unpin {
+    return Intl.message('Unpin', name: 'unpin', desc: '', args: []);
+  }
+
+  /// `Pin nodes`
+  String get pinNodes {
+    return Intl.message('Pin nodes', name: 'pinNodes', desc: '', args: []);
+  }
+
   /// `Delete`
   String get delete {
     return Intl.message('Delete', name: 'delete', desc: '', args: []);

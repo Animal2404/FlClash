@@ -63,6 +63,11 @@ _AppSettingProps _$AppSettingPropsFromJson(
           ?.map((e) => e as String)
           .toList() ??
       const [],
+  pinnedProxies:
+      (json['pinnedProxies'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList() ??
+      const [],
   currentService: json['currentService'] as String?,
 );
 
@@ -99,6 +104,7 @@ Map<String, dynamic> _$AppSettingPropsToJson(_AppSettingProps instance) =>
       'editorFontSize': _$EditorFontSizeEnumMap[instance.editorFontSize]!,
       'serviceOrder': instance.serviceOrder,
       'disabledServices': instance.disabledServices,
+      'pinnedProxies': instance.pinnedProxies,
       'currentService': instance.currentService,
     };
 

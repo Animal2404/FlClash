@@ -23,6 +23,13 @@ class _ProxiesViewState extends ConsumerState<ProxiesView> {
   final GlobalKey<ProxiesTabViewState> _proxiesTabKey = GlobalKey();
   bool _hasProviders = false;
   bool _isTab = false;
+  bool _isPinning = false;
+
+  void _handleTogglePinning() {
+    setState(() {
+      _isPinning = !_isPinning;
+    });
+  }
 
   List<CommonPopupMenuItem> _buildMenuItems(BuildContext context) {
     final appLocalizations = context.appLocalizations;
@@ -125,6 +132,19 @@ class _ProxiesViewState extends ConsumerState<ProxiesView> {
       isLoading: isLoading,
       resizeToAvoidBottomInset: false,
       primaryAction: _buildPrimaryAction(),
+      // A widget action, not another folded icon, so it stays on the bar.
+      actions: [
+        FadeRotationScaleBox(
+          child: IconButton(
+            key: ValueKey(_isPinning),
+            tooltip: _isPinning
+                ? context.appLocalizations.save
+                : context.appLocalizations.pinNodes,
+            onPressed: _handleTogglePinning,
+            icon: GlyphIcon(_isPinning ? AppGlyphs.save : AppGlyphs.pin),
+          ),
+        ),
+      ],
       iconActions: [
         if (_isTab)
           IconButtonData(
@@ -139,8 +159,11 @@ class _ProxiesViewState extends ConsumerState<ProxiesView> {
       title: context.appLocalizations.proxies,
       searchState: AppBarSearchState(onSearch: _onSearch),
       body: switch (proxiesType) {
-        ProxiesType.tab => ProxiesTabView(key: _proxiesTabKey),
-        ProxiesType.list => const ProxiesListView(),
+        ProxiesType.tab => ProxiesTabView(
+          key: _proxiesTabKey,
+          pinning: _isPinning,
+        ),
+        ProxiesType.list => ProxiesListView(pinning: _isPinning),
       },
     );
   }

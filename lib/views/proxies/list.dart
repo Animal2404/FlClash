@@ -24,7 +24,9 @@ const _enterSlideStep = 8.0;
 final _enterWindow = commonDuration + _enterStaggerStep * _enterStaggerLimit;
 
 class ProxiesListView extends ConsumerStatefulWidget {
-  const ProxiesListView({super.key});
+  const ProxiesListView({super.key, this.pinning = false});
+
+  final bool pinning;
 
   @override
   ConsumerState<ProxiesListView> createState() => _ProxiesListViewState();
@@ -112,6 +114,7 @@ class _ProxiesListViewState extends ConsumerState<ProxiesListView> {
               key: ValueKey('$groupName.${proxy.name}'),
               proxy: proxy,
               groupName: groupName,
+              pinning: widget.pinning,
             ),
           );
           if (!enterAnimated) {

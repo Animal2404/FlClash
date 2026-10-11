@@ -14,9 +14,11 @@ import 'card.dart';
 import 'common.dart';
 
 class ProxiesTabView extends ConsumerStatefulWidget {
-  const ProxiesTabView({super.key});
+  const ProxiesTabView({super.key, this.pinning = false});
 
   static Map<String, PageStorageKey> pageListStoreMap = {};
+
+  final bool pinning;
 
   @override
   ConsumerState<ProxiesTabView> createState() => ProxiesTabViewState();
@@ -333,6 +335,7 @@ class ProxiesTabViewState extends ConsumerState<ProxiesTabView>
                           group: group,
                           columns: columns,
                           cardType: state.proxyCardType,
+                          pinning: widget.pinning,
                         ),
                     ],
                   );
@@ -351,6 +354,7 @@ class ProxyGroupView extends ConsumerWidget {
   final ScrollController controller;
   final int columns;
   final ProxyCardType cardType;
+  final bool pinning;
 
   const ProxyGroupView({
     super.key,
@@ -358,6 +362,7 @@ class ProxyGroupView extends ConsumerWidget {
     required this.controller,
     required this.columns,
     required this.cardType,
+    this.pinning = false,
   });
 
   PageStorageKey _getPageStorageKey(WidgetRef ref) {
@@ -400,6 +405,7 @@ class ProxyGroupView extends ConsumerWidget {
             type: cardType,
             proxy: proxy,
             groupName: group.name,
+            pinning: pinning,
           );
         },
       ),

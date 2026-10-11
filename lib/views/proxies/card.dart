@@ -32,12 +32,23 @@ void selectGroupProxy(
   );
 }
 
+void togglePinnedProxy(WidgetRef ref, String proxyName) {
+  ref.read(appSettingProvider.notifier).update((state) {
+    final pinnedProxies = [...state.pinnedProxies];
+    if (!pinnedProxies.remove(proxyName)) {
+      pinnedProxies.add(proxyName);
+    }
+    return state.copyWith(pinnedProxies: pinnedProxies);
+  });
+}
+
 class ProxyCard extends ConsumerWidget {
   final String groupName;
   final Proxy proxy;
   final GroupType groupType;
   final ProxyCardType type;
   final String? testUrl;
+  final bool pinning;
 
   const ProxyCard({
     super.key,
@@ -46,6 +57,7 @@ class ProxyCard extends ConsumerWidget {
     required this.proxy,
     required this.groupType,
     required this.type,
+    this.pinning = false,
   });
 
   Measure get measure => globalState.measure;
@@ -80,6 +92,7 @@ class ProxyCard extends ConsumerWidget {
     final delayText = _DelayText(proxy: proxy, testUrl: testUrl, type: type);
     final proxyNameText = _buildProxyNameText(context);
     return Stack(
+      clipBehavior: Clip.none,
       children: [
         Consumer(
           builder: (_, ref, child) {
@@ -91,6 +104,10 @@ class ProxyCard extends ConsumerWidget {
               enterActionsOnRight: true,
               key: key,
               onPressed: () {
+                if (pinning) {
+                  togglePinnedProxy(ref, proxy.name);
+                  return;
+                }
                 selectGroupProxy(
                   ref,
                   groupName: groupName,
@@ -150,13 +167,61 @@ class ProxyCard extends ConsumerWidget {
             ),
           ),
         ),
-        if (groupType.isComputedSelected)
+        if (pinning)
+          Positioned(
+            top: -8,
+            right: -8,
+            child: _ProxyPinMark(proxyName: proxy.name),
+          )
+        else if (groupType.isComputedSelected)
           Positioned(
             top: 0,
             right: 0,
             child: _ProxyComputedMark(groupName: groupName, proxy: proxy),
           ),
       ],
+    );
+  }
+}
+
+/// Sits over the card corner the way the dashboard's remove badge does, and
+/// is filled once the node is pinned.
+class _ProxyPinMark extends ConsumerWidget {
+  const _ProxyPinMark({required this.proxyName});
+
+  final String proxyName;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isPinned = ref.watch(
+      appSettingProvider.select(
+        (state) => state.pinnedProxies.contains(proxyName),
+      ),
+    );
+    final tooltip = isPinned
+        ? context.appLocalizations.unpin
+        : context.appLocalizations.pin;
+    void onPressed() => togglePinnedProxy(ref, proxyName);
+    return ElasticButton(
+      child: SizedBox(
+        width: 24,
+        height: 24,
+        child: isPinned
+            ? IconButton.filled(
+                tooltip: tooltip,
+                iconSize: 16,
+                padding: const EdgeInsets.all(4),
+                onPressed: onPressed,
+                icon: const GlyphIcon(AppGlyphs.pin, fill: 1),
+              )
+            : IconButton.filledTonal(
+                tooltip: tooltip,
+                iconSize: 16,
+                padding: const EdgeInsets.all(4),
+                onPressed: onPressed,
+                icon: const GlyphIcon(AppGlyphs.pin, fill: 1),
+              ),
+      ),
     );
   }
 }
