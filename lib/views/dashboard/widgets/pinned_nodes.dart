@@ -64,7 +64,7 @@ class _PinnedNodesCardState extends ConsumerState<PinnedNodesCard> {
                 action: CommonMinFilledButtonTheme(
                   child: FilledButton.tonalIcon(
                     onPressed: () => showPinnedNodesSheet(context),
-                    icon: const GlyphIcon(AppGlyphs.pin),
+                    icon: const GlyphIcon(AppGlyphs.pin, fill: 1),
                     label: Text(appLocalizations.pinNodes),
                   ),
                 ),
